@@ -355,6 +355,8 @@ class FitSensexApp:
         self.pnl_grid.pack(fill="both", expand=True, padx=12, pady=(0, 12))
         self.pnl_column_widths = [20, 12]
         self.pnl_rows = [
+            ("universal_mid", "Universal Mid"),
+            ("atm_vol", "ATM Vol"),
             ("options_snapshot", "Options Snapshot PV"),
             ("options_live", "Options Live Mid PV"),
             ("options_pnl", "Options Live PnL"),
@@ -761,6 +763,7 @@ class FitSensexApp:
         options_live_pv = weighted_price_total(options_rows, "mid_mkt")
         hedge_pnl = 0.0
         live_universal_mid = result.universal_mid if result is not None else None
+        live_atm_vol = result.atm_vol * 100 if result is not None else None
         trade_mults = load_trade_mult_lookup(self.config.market.portfolio_file)
         trades = load_trade_log(self.risk_engine.trade_log_path)
         hedge_pnl = sum(
@@ -776,13 +779,21 @@ class FitSensexApp:
         total_pnl = hedge_pnl + (options_pnl or 0.0)
 
         self.pnl_snapshot_label.config(text=f"Snapshot: {self.options_pv_snapshot_label}")
+        self._set_pnl_row("universal_mid", live_universal_mid)
+        self._set_pnl_row("atm_vol", live_atm_vol, suffix="%")
         self._set_pnl_row("options_snapshot", self.options_pv_snapshot)
         self._set_pnl_row("options_live", options_live_pv)
         self._set_pnl_row("options_pnl", options_pnl)
         self._set_pnl_row("hedge_pnl", hedge_pnl)
         self._set_pnl_row("total_pnl", total_pnl, total=True)
 
-    def _set_pnl_row(self, key: str, value: float | None, total: bool = False) -> None:
+    def _set_pnl_row(
+        self,
+        key: str,
+        value: float | None,
+        total: bool = False,
+        suffix: str = "",
+    ) -> None:
         row_index = next(index for index, item in enumerate(self.pnl_rows, start=1) if item[0] == key)
         metric = next(label for item_key, label in self.pnl_rows if item_key == key)
         for widget in self.pnl_grid.grid_slaves(row=row_index):
@@ -790,10 +801,13 @@ class FitSensexApp:
 
         background = "#cfe8ff" if total else "white"
         self._render_pnl_cell(row_index, 0, metric, "", background, total)
+        display_value = format_optional_number(value) if value is not None else ""
+        if display_value and suffix:
+            display_value = f"{display_value}{suffix}"
         self._render_pnl_cell(
             row_index,
             1,
-            format_optional_number(value) if value is not None else "",
+            display_value,
             value if value is not None else "",
             background,
             total,
