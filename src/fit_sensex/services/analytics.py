@@ -41,7 +41,10 @@ class AnalyticsEngine:
             return None
 
         universal_mid = (best_bid + best_ask) / 2
-        self.user_value = round(universal_mid / 100) * 100
+        self.user_value = (
+            round(universal_mid / self.market_config.strike_round_base)
+            * self.market_config.strike_round_base
+        )
         universal_spot = universal_mid / discount_factor
 
         self._fill_iv(rows, universal_spot, time)
@@ -116,7 +119,7 @@ class AnalyticsEngine:
                 + self.market_config.brokerage_rate * (quote.ce_ask + quote.pe_bid)
             )
 
-            if abs(strike - self.user_value) <= 300:
+            if abs(strike - self.user_value) <= self.market_config.synthetic_search_width:
                 best_bid = synth_bid if best_bid is None else max(best_bid, synth_bid)
                 best_ask = synth_ask if best_ask is None else min(best_ask, synth_ask)
 

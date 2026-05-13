@@ -1,6 +1,6 @@
-# Fit SENSEX
+# Fit SENSEX / NIFTY
 
-Modular version of the live SENSEX option-chain dashboard.
+Modular version of the live SENSEX and NIFTY option-chain dashboard.
 
 ## Architecture
 
@@ -44,10 +44,16 @@ Run the app:
 ..\.venv\Scripts\python.exe -m fit_sensex
 ```
 
-The app asks for an expiry date at startup:
+The app asks for an underlying first:
 
 ```text
-Enter SENSEX option expiry date (YYYY-MM-DD):
+Select underlying (SENSEX/NIFTY):
+```
+
+Then it asks for an expiry date:
+
+```text
+Enter <UNDERLYING> option expiry date (YYYY-MM-DD):
 ```
 
 Accepted formats are `YYYY-MM-DD`, `DD-MM-YYYY`, and `DD/MM/YYYY`.
@@ -61,6 +67,33 @@ The app also reads the five initial model parameters from the `params` tab of th
 
 - column A: parameter name, using `a`, `bL`, `bR`, `capL`, `floorR`
 - column B: starting value
+
+Fixed user inputs are read from the `variables` tab of the same workbook:
+
+- column A: variable name
+- column B: value used by the app
+- the first 13 rows after the header are used, from `Low Strike` through `Symbol Name`
+- optional additional rows can define `Strike Round Base` and `Synthetic Search Width`
+
+For underlying-specific behavior, the workbook can contain these sheets:
+
+- `variables_sensex` / `variables_nifty`
+- `params_sensex` / `params_nifty`
+- `hols_sensex` / `hols_nifty`
+
+If an underlying-specific sheet is missing, the app falls back to the generic sheet (`variables`, `params`, or `hols`).
+
+## Risk Tab
+
+Create an underlying-specific portfolio file such as `portfolio_sensex.csv` or `portfolio_nifty.csv` in this folder to populate the risk-management tab:
+
+```csv
+Lots,Underlying,Maturity,Strike,Type,Mult,Qty
+60,SENSEX,14-May-26,75000,PE,20,1200
+60,SENSEX,14-May-26,76000,CE,20,1200
+```
+
+The file is re-read on every GUI refresh. `portfolio.csv` is ignored by Git, and `portfolio.example.csv` is included as a template.
 
 You can point to another workbook with:
 

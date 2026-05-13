@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import threading
 from collections.abc import Mapping
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from kiteconnect import KiteTicker
 
@@ -14,6 +16,7 @@ class MarketDataStore:
         self.chain = chain
         self.token_to_strike = token_to_strike
         self.latest_values: dict[int, LatestQuote] = {}
+        self._frozen_tokens: set[int] = set()
         self._lock = threading.Lock()
 
     def update_tick(self, tick: Mapping) -> None:
@@ -22,26 +25,37 @@ class MarketDataStore:
             return
 
         strike, option_type = self.token_to_strike[token]
-        depth = tick.get("depth")
-        if not depth:
-            return
-
-        buy = depth.get("buy")
-        sell = depth.get("sell")
-        if not buy or not sell:
-            return
-
-        try:
-            best_bid = buy[0]["price"]
-            best_ask = sell[0]["price"]
-        except (IndexError, KeyError, TypeError):
-            return
-
         option_data = self.chain[strike].ce if option_type == "CE" else self.chain[strike].pe
         if option_data is None:
             return
 
         with self._lock:
+            if token in self._frozen_tokens:
+                return
+
+            fallback_price = _tick_last_price(tick)
+            if _market_closed():
+                if fallback_price is None:
+                    return
+                best_bid = fallback_price
+                best_ask = fallback_price
+                self._frozen_tokens.add(token)
+            else:
+                depth = tick.get("depth")
+                if not depth:
+                    return
+
+                buy = depth.get("buy")
+                sell = depth.get("sell")
+                if not buy or not sell:
+                    return
+
+                try:
+                    best_bid = buy[0]["price"]
+                    best_ask = sell[0]["price"]
+                except (IndexError, KeyError, TypeError):
+                    return
+
             option_data.bid = best_bid
             option_data.ask = best_ask
 
@@ -62,6 +76,20 @@ class MarketDataStore:
     def snapshot(self) -> dict[int, LatestQuote]:
         with self._lock:
             return dict(self.latest_values)
+
+
+def _market_closed() -> bool:
+    ist_now = datetime.now(ZoneInfo("Asia/Kolkata"))
+    market_close = ist_now.replace(hour=15, minute=30, second=0, microsecond=0)
+    return ist_now >= market_close
+
+
+def _tick_last_price(tick: Mapping) -> float | None:
+    for field in ("last_price", "ltp"):
+        value = tick.get(field)
+        if isinstance(value, (int, float)):
+            return float(value)
+    return None
 
 
 class KiteMarketStream:

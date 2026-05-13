@@ -11,36 +11,64 @@ EXCEL_EPOCH_1900 = date(1899, 12, 30)
 MAIN_NS = {"m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
 
 
-def load_full_days_for_expiry(workbook_path: Path, expiry: date) -> float:
+def load_variables(workbook_path: Path, underlying: str | None = None) -> dict[str, str]:
+    if not workbook_path.exists():
+        return {}
+    if workbook_path.suffix.lower() != ".xlsx":
+        raise ValueError("Variables workbook must be an .xlsx file.")
+
+    rows = read_sheet_rows_with_fallback(workbook_path, "variables", underlying)
+    values: dict[str, str] = {}
+    for row in rows[1:]:
+        name = str(row.get("A", "")).strip()
+        value = str(row.get("B", "")).strip().replace("\xa0", " ")
+        if name and value:
+            values[name] = value
+
+    return values
+
+
+def load_full_days_for_expiry(
+    workbook_path: Path,
+    expiry: date,
+    underlying: str | None = None,
+) -> float:
     if not workbook_path.exists():
         raise FileNotFoundError(f"Holiday workbook not found: {workbook_path}")
     if workbook_path.suffix.lower() != ".xlsx":
         raise ValueError("Holiday workbook must be an .xlsx file.")
 
     target_serial = date_to_excel_serial(expiry)
-    rows = read_sheet_rows(workbook_path, "hols")
+    rows = read_sheet_rows_with_fallback(workbook_path, "hols", underlying)
 
     for row in rows:
         expiry_cell = row.get("A")
         full_days_cell = row.get("C")
         if full_days_cell in (None, ""):
             continue
+        try:
+            full_days_value = float(full_days_cell)
+        except (TypeError, ValueError):
+            continue
 
         if cell_matches_expiry(expiry_cell, expiry, target_serial):
-            return float(full_days_cell)
+            return full_days_value
 
     raise ValueError(
         f"Expiry {expiry} was not found in column A of {workbook_path.name}."
     )
 
 
-def load_model_params(workbook_path: Path) -> dict[str, float]:
+def load_model_params(
+    workbook_path: Path,
+    underlying: str | None = None,
+) -> dict[str, float]:
     if not workbook_path.exists():
         raise FileNotFoundError(f"Holiday workbook not found: {workbook_path}")
     if workbook_path.suffix.lower() != ".xlsx":
         raise ValueError("Holiday workbook must be an .xlsx file.")
 
-    rows = read_sheet_rows(workbook_path, "params")
+    rows = read_sheet_rows_with_fallback(workbook_path, "params", underlying)
     values = {
         str(row.get("A", "")).strip(): float(row["B"])
         for row in rows
@@ -102,6 +130,47 @@ def read_sheet_rows(workbook_path: Path, sheet_name: str) -> list[dict[str, str]
         rows.append(values)
 
     return rows
+
+
+def read_sheet_rows_with_fallback(
+    workbook_path: Path,
+    base_sheet_name: str,
+    underlying: str | None = None,
+) -> list[dict[str, str]]:
+    sheet_names = sheet_name_candidates(base_sheet_name, underlying)
+    last_error: Exception | None = None
+    for sheet_name in sheet_names:
+        try:
+            return read_sheet_rows(workbook_path, sheet_name)
+        except ValueError as exc:
+            last_error = exc
+            continue
+
+    if last_error is not None:
+        raise last_error
+    raise ValueError(f"Workbook has no '{base_sheet_name}' sheet.")
+
+
+def sheet_name_candidates(base_sheet_name: str, underlying: str | None) -> list[str]:
+    if not underlying:
+        return [base_sheet_name]
+
+    normalized = underlying.strip().lower()
+    return [f"{base_sheet_name}_{normalized}", base_sheet_name]
+
+
+def workbook_has_sheet(workbook_path: Path, sheet_name: str) -> bool:
+    if not workbook_path.exists():
+        return False
+
+    with zipfile.ZipFile(workbook_path) as archive:
+        workbook = ET.fromstring(archive.read("xl/workbook.xml"))
+
+    normalized_name = sheet_name.strip().lower()
+    for sheet in workbook.findall("m:sheets/m:sheet", MAIN_NS):
+        if sheet.attrib.get("name", "").strip().lower() == normalized_name:
+            return True
+    return False
 
 
 def read_shared_strings(archive: zipfile.ZipFile) -> list[str]:

@@ -1,4 +1,5 @@
 credentials.ini
+portfolio.csv
 __pycache__/
 *.pyc
 *.egg-info/

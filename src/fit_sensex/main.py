@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 import tkinter as tk
 
-from fit_sensex.config import AppConfig
+from fit_sensex.config import SUPPORTED_UNDERLYINGS, build_app_config, normalize_underlying
 from fit_sensex.market.instruments import load_option_chain_for_expiry, parse_expiry_date
 from fit_sensex.market.kite_stream import KiteMarketStream, MarketDataStore
 from fit_sensex.services.analytics import AnalyticsEngine
@@ -14,9 +14,19 @@ from fit_sensex.services.expiry_calendar import (
 from fit_sensex.ui.app import FitSensexApp
 
 
-def ask_expiry_date():
+def ask_underlying() -> str:
+    prompt = f"Select underlying ({'/'.join(SUPPORTED_UNDERLYINGS)}): "
     while True:
-        raw_value = input("Enter SENSEX option expiry date (YYYY-MM-DD): ")
+        raw_value = input(prompt)
+        try:
+            return normalize_underlying(raw_value)
+        except ValueError as exc:
+            print(exc)
+
+
+def ask_expiry_date(symbol_name: str):
+    while True:
+        raw_value = input(f"Enter {symbol_name} option expiry date (YYYY-MM-DD): ")
         try:
             return parse_expiry_date(raw_value)
         except ValueError as exc:
@@ -24,11 +34,19 @@ def ask_expiry_date():
 
 
 def main() -> None:
-    config = AppConfig()
+    underlying = ask_underlying()
+    config = build_app_config(underlying)
     config.api.validate()
-    expiry = ask_expiry_date()
-    full_days = load_full_days_for_expiry(config.market.holidays_file, expiry)
-    model_params = load_model_params(config.market.holidays_file)
+    expiry = ask_expiry_date(config.market.symbol_name)
+    full_days = load_full_days_for_expiry(
+        config.market.holidays_file,
+        expiry,
+        config.market.underlying,
+    )
+    model_params = load_model_params(
+        config.market.holidays_file,
+        config.market.underlying,
+    )
     config = replace(config, market=replace(config.market, full_days=full_days))
     config = replace(
         config,
@@ -41,7 +59,10 @@ def main() -> None:
             initial_floorr=model_params["floorR"],
         ),
     )
-    print(f"Using full_days={full_days} from {config.market.holidays_file.name}")
+    print(
+        f"Using {config.market.symbol_name} on {config.market.exchange}. "
+        f"full_days={full_days} from {config.market.holidays_file.name}"
+    )
     print(
         "Using initial params from params tab: "
         f"a={config.model.initial_a}, "

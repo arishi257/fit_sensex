@@ -1,0 +1,11 @@
+Book,Lots,Underlying,Maturity,Strike,Type,Mult,Qty
+options,60.0,NIFTY,12-May-26,23050,PE,65.0,3900.0
+options,-20.0,NIFTY,12-May-26,23350,PE,65.0,-1300.0
+options,-20.0,NIFTY,12-May-26,23400,PE,65.0,-1300.0
+options,-20.0,NIFTY,12-May-26,23450,PE,65.0,-1300.0
+options,-20.0,NIFTY,12-May-26,23500,CE,65.0,-1300.0
+options,-20.0,NIFTY,12-May-26,23550,CE,65.0,-1300.0
+options,-20.0,NIFTY,12-May-26,23600,CE,65.0,-1300.0
+options,60.0,NIFTY,12-May-26,23900,CE,65.0,3900.0
+delta,-42,NIFTY,12-May-26,23450,CE,65.0,-2730.0
+delta,42,NIFTY,12-May-26,23450,PE,65.0,2730.0

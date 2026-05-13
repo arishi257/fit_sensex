@@ -34,6 +34,41 @@ def black_scholes_price(
     return strike * exp(-rate * time) * norm_cdf(-d2) - spot * norm_cdf(-d1)
 
 
+def black_scholes_delta(
+    spot: float,
+    strike: float,
+    time: float,
+    rate: float,
+    vol: float,
+    option_type: str,
+) -> float:
+    if vol <= 0 or time <= 0:
+        return 0.0
+
+    d1 = (log(spot / strike) + (rate + 0.5 * vol * vol) * time) / (
+        vol * sqrt(time)
+    )
+    if option_type == "CE":
+        return norm_cdf(d1)
+    return norm_cdf(d1) - 1
+
+
+def black_scholes_gamma(
+    spot: float,
+    strike: float,
+    time: float,
+    rate: float,
+    vol: float,
+) -> float:
+    if vol <= 0 or time <= 0 or spot <= 0:
+        return 0.0
+
+    d1 = (log(spot / strike) + (rate + 0.5 * vol * vol) * time) / (
+        vol * sqrt(time)
+    )
+    return norm_pdf(d1) / (spot * vol * sqrt(time))
+
+
 def black_scholes_vega(
     spot: float,
     strike: float,
@@ -48,6 +83,24 @@ def black_scholes_vega(
         vol * sqrt(time)
     )
     return spot * norm_pdf(d1) * sqrt(time)
+
+
+def black_scholes_theta_price_change(
+    spot: float,
+    strike: float,
+    time: float,
+    time_step: float,
+    rate: float,
+    vol: float,
+    option_type: str,
+) -> float:
+    if vol <= 0 or time <= 0 or time_step <= 0:
+        return 0.0
+
+    current_price = black_scholes_price(spot, strike, time, rate, vol, option_type)
+    next_time = max(time - time_step, 0.000001)
+    rolled_price = black_scholes_price(spot, strike, next_time, rate, vol, option_type)
+    return rolled_price - current_price
 
 
 def implied_volatility(

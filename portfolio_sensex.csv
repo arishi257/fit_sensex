@@ -1,0 +1,11 @@
+Book,Lots,Underlying,Maturity,Strike,Type,Mult,Qty
+options,60.0,SENSEX,14-May-26,72500,PE,20.0,1200.0
+options,-20.0,SENSEX,14-May-26,74200,PE,20.0,-400.0
+options,-20.0,SENSEX,14-May-26,74400,PE,20.0,-400.0
+options,-20.0,SENSEX,14-May-26,74600,PE,20.0,-400.0
+options,-20.0,SENSEX,14-May-26,74700,CE,20.0,-400.0
+options,-20.0,SENSEX,14-May-26,74900,CE,20.0,-400.0
+options,-20.0,SENSEX,14-May-26,75100,CE,20.0,-400.0
+options,60.0,SENSEX,14-May-26,76400,CE,20.0,1200.0
+delta,9,SENSEX,14-May-26,74600,CE,20.0,180.0
+delta,-9,SENSEX,14-May-26,74600,PE,20.0,-180.0
