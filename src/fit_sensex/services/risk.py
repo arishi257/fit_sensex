@@ -178,13 +178,17 @@ class RiskEngine:
             f"{market_config.portfolio_file.stem}_trades.csv"
         )
 
-    def calculate(self, result: AnalyticsResult) -> list[RiskRow]:
+    def calculate(
+        self,
+        result: AnalyticsResult,
+        hedge_threshold_lots: float | None = None,
+    ) -> list[RiskRow]:
         raw_positions = [
             position
             for position in load_portfolio(self.market_config.portfolio_file)
             if self._matches_underlying(position)
         ]
-        hedged = self._apply_synthetic_hedge(raw_positions, result)
+        hedged = self._apply_synthetic_hedge(raw_positions, result, hedge_threshold_lots)
         if hedged.trades:
             save_portfolio(self.market_config.portfolio_file, hedged.positions)
             append_trades(self.trade_log_path, hedged.trades)
@@ -208,6 +212,7 @@ class RiskEngine:
         self,
         positions: list[PortfolioPosition],
         result: AnalyticsResult,
+        hedge_threshold_lots: float | None,
     ) -> HedgeDecision:
         option_positions = [position for position in positions if position.book == "options"]
         delta_positions = [position for position in positions if position.book == "delta"]
@@ -234,9 +239,10 @@ class RiskEngine:
         options_delta_lots = sum_numeric(option_rows, "bs_delta_lots")
         synthetic_delta_lots = sum_numeric(delta_rows, "bs_delta_lots")
         combined_delta_lots = options_delta_lots + synthetic_delta_lots
-        options_gamma_lots = sum_numeric(option_rows, "gamma_lots_10bps")
         threshold_lots = (
-            abs(options_gamma_lots) * self.market_config.delta_hedge_threshold_ratio
+            hedge_threshold_lots
+            if hedge_threshold_lots is not None
+            else self.market_config.delta_hedge_threshold_ratio
         )
 
         if abs(combined_delta_lots) < threshold_lots:

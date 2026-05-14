@@ -17,6 +17,8 @@ from fit_sensex.services.risk import RiskEngine
 
 
 class FitSensexApp:
+    MAX_VISIBLE_TRADES = 10
+
     def __init__(
         self,
         root: tk.Tk,
@@ -33,8 +35,15 @@ class FitSensexApp:
         self.risk_engine = RiskEngine(config.market)
         self.options_pv_snapshot: float | None = None
         self.options_pv_snapshot_label = "Not snapped"
+        self.options_snapshot_override_var = tk.StringVar()
         self.latest_risk_rows: list = []
         self.latest_result: AnalyticsResult | None = None
+        self.hedge_threshold_var = tk.StringVar(
+            value=format_number(self.config.market.delta_hedge_threshold_ratio, 2)
+        )
+        self.committed_hedge_threshold_lots = abs(
+            self.config.market.delta_hedge_threshold_ratio
+        )
 
         self.root.title(
             f"{self.config.market.symbol_name} Dynamic Synthetic Futures + "
@@ -324,6 +333,24 @@ class FitSensexApp:
         )
         snap_button.pack(side="left")
 
+        tk.Label(control_frame, text="Options PV Override", padx=12).pack(side="left")
+        snapshot_override_entry = tk.Entry(
+            control_frame,
+            textvariable=self.options_snapshot_override_var,
+            width=10,
+            justify="right",
+        )
+        snapshot_override_entry.pack(side="left")
+
+        commit_snapshot_button = tk.Button(
+            control_frame,
+            text="Commit Snapshot PV",
+            command=self._commit_options_snapshot_override,
+            padx=10,
+            pady=4,
+        )
+        commit_snapshot_button.pack(side="left", padx=(8, 0))
+
         clear_button = tk.Button(
             control_frame,
             text="Clear Hedge Trades",
@@ -342,6 +369,33 @@ class FitSensexApp:
         )
         reload_button.pack(side="left", padx=(8, 0))
 
+        tk.Label(control_frame, text="Hedge Threshold Lots", padx=12).pack(side="left")
+        threshold_entry = tk.Entry(
+            control_frame,
+            textvariable=self.hedge_threshold_var,
+            width=8,
+            justify="right",
+        )
+        threshold_entry.pack(side="left")
+
+        commit_threshold_button = tk.Button(
+            control_frame,
+            text="Commit Threshold",
+            command=self._commit_hedge_threshold,
+            padx=10,
+            pady=4,
+        )
+        commit_threshold_button.pack(side="left", padx=(8, 0))
+
+        self.committed_threshold_label = tk.Label(
+            control_frame,
+            text=f"Active: {format_number(self.committed_hedge_threshold_lots, 2)}",
+            padx=12,
+            anchor="w",
+            font=("Arial", 10),
+        )
+        self.committed_threshold_label.pack(side="left")
+
         self.pnl_snapshot_label = tk.Label(
             control_frame,
             text=f"Snapshot: {self.options_pv_snapshot_label}",
@@ -355,6 +409,7 @@ class FitSensexApp:
         self.pnl_grid.pack(fill="both", expand=True, padx=12, pady=(0, 12))
         self.pnl_column_widths = [20, 12]
         self.pnl_rows = [
+            ("hedge_threshold", "Hedge Threshold Lots"),
             ("universal_mid", "Universal Mid"),
             ("atm_vol", "ATM Vol"),
             ("options_snapshot", "Options Snapshot PV"),
@@ -370,12 +425,13 @@ class FitSensexApp:
             if int(widget.grid_info()["row"]) > 0:
                 widget.destroy()
 
-        trades = list(reversed(load_trade_log(self.risk_engine.trade_log_path)))
+        all_trades = list(reversed(load_trade_log(self.risk_engine.trade_log_path)))
+        trades = all_trades[: self.MAX_VISIBLE_TRADES]
         trade_mults = load_trade_mult_lookup(self.config.market.portfolio_file)
         live_universal_mid = result.universal_mid if result is not None else None
         total_live_pnl = sum(
             trade_live_pnl(trade, live_universal_mid, trade_mults) or 0.0
-            for trade in trades
+            for trade in all_trades
         )
 
         self._render_trades_row(
@@ -458,7 +514,10 @@ class FitSensexApp:
         result = self.analytics.calculate(self.store.snapshot())
         if result is not None:
             self.latest_result = result
-            self.latest_risk_rows = self.risk_engine.calculate(result)
+            self.latest_risk_rows = self.risk_engine.calculate(
+                result,
+                self._hedge_threshold_lots(),
+            )
             self._render(result)
         else:
             self._render_trades()
@@ -723,6 +782,7 @@ class FitSensexApp:
             2,
             use_commas=True,
         )
+        self.options_snapshot_override_var.set(self.options_pv_snapshot_label.replace(",", ""))
         self.pnl_snapshot_label.config(text=f"Snapshot: {self.options_pv_snapshot_label}")
         self._render_pnl(self.latest_result, self.latest_risk_rows)
 
@@ -752,11 +812,33 @@ class FitSensexApp:
     def _reload_portfolio(self) -> None:
         self.options_pv_snapshot = None
         self.options_pv_snapshot_label = "Not snapped"
+        self.options_snapshot_override_var.set("")
         self.pnl_snapshot_label.config(text=f"Snapshot: {self.options_pv_snapshot_label}")
         if self.latest_result is not None:
-            self.latest_risk_rows = self.risk_engine.calculate(self.latest_result)
+            self.latest_risk_rows = self.risk_engine.calculate(
+                self.latest_result,
+                self._hedge_threshold_lots(),
+            )
             self._render_risk(self.latest_result, self.latest_risk_rows)
             self._render_pnl(self.latest_result, self.latest_risk_rows)
+
+    def _commit_options_snapshot_override(self) -> None:
+        try:
+            snapshot_value = float(self.options_snapshot_override_var.get().replace(",", "").strip())
+        except (AttributeError, ValueError):
+            return
+
+        self.options_pv_snapshot = snapshot_value
+        self.options_pv_snapshot_label = format_number(
+            self.options_pv_snapshot,
+            2,
+            use_commas=True,
+        )
+        self.options_snapshot_override_var.set(
+            self.options_pv_snapshot_label.replace(",", "")
+        )
+        self.pnl_snapshot_label.config(text=f"Snapshot: {self.options_pv_snapshot_label}")
+        self._render_pnl(self.latest_result, self.latest_risk_rows)
 
     def _render_pnl(self, result: AnalyticsResult | None, risk_rows: list) -> None:
         options_rows = [row for row in risk_rows if getattr(row, "book", "") == "options"]
@@ -779,6 +861,10 @@ class FitSensexApp:
         total_pnl = hedge_pnl + (options_pnl or 0.0)
 
         self.pnl_snapshot_label.config(text=f"Snapshot: {self.options_pv_snapshot_label}")
+        self.committed_threshold_label.config(
+            text=f"Active: {format_number(self.committed_hedge_threshold_lots, 2)}"
+        )
+        self._set_pnl_row("hedge_threshold", self._hedge_threshold_lots())
         self._set_pnl_row("universal_mid", live_universal_mid)
         self._set_pnl_row("atm_vol", live_atm_vol, suffix="%")
         self._set_pnl_row("options_snapshot", self.options_pv_snapshot)
@@ -786,6 +872,28 @@ class FitSensexApp:
         self._set_pnl_row("options_pnl", options_pnl)
         self._set_pnl_row("hedge_pnl", hedge_pnl)
         self._set_pnl_row("total_pnl", total_pnl, total=True)
+
+    def _hedge_threshold_lots(self) -> float:
+        return self.committed_hedge_threshold_lots
+
+    def _commit_hedge_threshold(self) -> None:
+        try:
+            committed_value = abs(float(self.hedge_threshold_var.get()))
+        except (TypeError, ValueError):
+            committed_value = abs(self.config.market.delta_hedge_threshold_ratio)
+            self.hedge_threshold_var.set(format_number(committed_value, 2))
+
+        self.committed_hedge_threshold_lots = committed_value
+        self.committed_threshold_label.config(
+            text=f"Active: {format_number(self.committed_hedge_threshold_lots, 2)}"
+        )
+        if self.latest_result is not None:
+            self.latest_risk_rows = self.risk_engine.calculate(
+                self.latest_result,
+                self._hedge_threshold_lots(),
+            )
+            self._render_risk(self.latest_result, self.latest_risk_rows)
+            self._render_pnl(self.latest_result, self.latest_risk_rows)
 
     def _set_pnl_row(
         self,
