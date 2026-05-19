@@ -3,9 +3,13 @@ from __future__ import annotations
 from scipy.optimize import minimize
 
 
+MAX_CAP_L = 10.0
+MIN_FLOOR_R = -10.0
+
+
 class ParametricVolCurve:
     def __init__(self, initial_params: list[float]) -> None:
-        self.last_fitted_params = list(initial_params)
+        self.last_fitted_params = constrain_params(initial_params)
 
     @staticmethod
     def model_slope(
@@ -68,11 +72,12 @@ class ParametricVolCurve:
         vegas: list[float],
         atm_vol_percent: float,
     ) -> tuple[list[float], list[float], float]:
-        initial_guess = self.last_fitted_params
+        initial_guess = constrain_params(self.last_fitted_params)
 
         def objective(params: list[float]) -> float:
+            constrained_params = constrain_params(params)
             model_vols = self.build_model_vol_curve(
-                ns_values, atm_vol_percent, *params
+                ns_values, atm_vol_percent, *constrained_params
             )
             return sum(
                 vega * (market_vol - model_vol) ** 2
@@ -86,9 +91,17 @@ class ParametricVolCurve:
             options={"maxiter": 300, "xatol": 1e-5, "fatol": 1e-5},
         )
 
-        fitted_params = result.x.tolist()
+        fitted_params = constrain_params(result.x.tolist())
         self.last_fitted_params = fitted_params
         final_model = self.build_model_vol_curve(
             ns_values, atm_vol_percent, *fitted_params
         )
         return fitted_params, final_model, float(result.fun)
+
+
+def constrain_params(params: list[float]) -> list[float]:
+    constrained = list(params)
+    if len(constrained) >= 5:
+        constrained[3] = min(constrained[3], MAX_CAP_L)
+        constrained[4] = max(constrained[4], MIN_FLOOR_R)
+    return constrained
